@@ -66,12 +66,12 @@ namespace CameraLiveView.Models
         private readonly Camera _c;
         private readonly FFMpegConverter _converter = new FFMpegConverter();
 
-        public Mp4VideoStream(string name)
+        public Mp4VideoStream(string name, int r)
         {
             // Log the info the converter prints. Hide when released
             _converter.LogReceived += (sender, args) => Debug.WriteLine(args.Data);
             // go get a camera, create only if not already set up
-            _c = CameraManager.Instance.GetCamera(name);
+            _c = CameraManager.Instance.GetCamera(name, r);
         }
 
         public async Task WriteToStream(Stream outputStream, HttpContent content, TransportContext context)

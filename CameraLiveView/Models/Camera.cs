@@ -16,7 +16,13 @@ namespace CameraLiveView.Models
     {
         private readonly string _name;
 
-        public Camera(string name)
+        // this allows you to pass in the rate.  not sure what else youd need in here
+        // the camera manager cache kinda makes it awkward, the future fetches of this named
+        // camera will just use the old one, will ignore the rate passed in.  probably should
+        // set all camera settings in some kind of a start up loadable config file or something
+        // I just wanted to be able to show two cameras on the page at two different frame rates
+        // to prove it would work
+        public Camera(string name, int r)
         {
             _name = name;
 
@@ -60,9 +66,9 @@ namespace CameraLiveView.Models
                                                   // This is where you push the image to the listeners.
                                                   // the results of your http fetch would be pushed here.
                                                   obs.OnNext(ms.ToArray());
-                                                  await Task.Delay(TimeSpan.FromSeconds(1.0/10));
+                                                  await Task.Delay(TimeSpan.FromSeconds(1.0/r));
                                                   // delay this a bit, to only generate some N frames a second.
-                                                  // only needed for fake camera.  Here we are set to 10 frame per second.
+                                                  // only needed for fake camera.  Here we are set to what ever was passed in on initial creation, 10 by default
                                               }
                                           }
                                       }
