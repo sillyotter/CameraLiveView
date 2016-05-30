@@ -68,7 +68,7 @@ namespace CameraLiveView.Models
 
         public Mp4VideoStream(string name)
         {
-            // Log the info the converter prints
+            // Log the info the converter prints. Hide when released
             _converter.LogReceived += (sender, args) => Debug.WriteLine(args.Data);
             // go get a camera, create only if not already set up
             _c = CameraManager.Instance.GetCamera(name);
