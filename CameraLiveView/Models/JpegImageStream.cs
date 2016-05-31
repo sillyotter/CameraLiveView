@@ -16,7 +16,7 @@ namespace CameraLiveView.Models
         public JpegImageStream(string name)
         {
             // Fetch a camera from the static camera repository.  If needed, it will create one.
-            _c = CameraManager.Instance.GetCamera(name, 10);
+            _c = CameraManager.Instance.GetCamera(name);
         }
 
         public async Task WriteToStream(Stream outputStream, HttpContent content, TransportContext context)

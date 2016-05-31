@@ -16,8 +16,7 @@ namespace CameraLiveView.Controllers
         public HttpResponseMessage Get(string id)
         {
             var q = HttpUtility.ParseQueryString(Request.RequestUri.Query);
-            var r = int.Parse(q.Get("fr") ?? "10");
-            var vstr = new Mp4VideoStream(id, r);
+            var vstr = new Mp4VideoStream(id);
             var response = Request.CreateResponse();
             response.Content = new PushStreamContent(vstr.WriteToStream, "video/mp4");
 

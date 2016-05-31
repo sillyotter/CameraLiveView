@@ -26,7 +26,7 @@ namespace CameraLiveView.Models
 
         private readonly ConcurrentDictionary<string, Lazy<Camera>> _cameraStore = new ConcurrentDictionary<string, Lazy<Camera>>();
 
-        public Camera GetCamera(string name, int r)
+        public Camera GetCamera(string name)
         {
             // This will manage a thread safe camera store.  We will ever only have one camere object per name in here,
             // and can access them safely from multiple requests.
@@ -43,7 +43,7 @@ namespace CameraLiveView.Models
             //
             // It may be possible to force this thing off into its own appdomain, to make sure that it is only every accessed from one
             // app domain and hence only ever has one camera, but that may be more complicated than needed. (and so far, doesnt work, see above)
-            return _cameraStore.GetOrAdd(name, n => new Lazy<Camera>(() => new Camera(n,r))).Value;
+            return _cameraStore.GetOrAdd(name, n => new Lazy<Camera>(() => new Camera(n))).Value;
         }
     }
 }
