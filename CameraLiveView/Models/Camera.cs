@@ -1,10 +1,11 @@
 using System;
-using System.Drawing;
-using System.Drawing.Imaging;
-using System.IO;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net.Http;
+using System.Reactive.Concurrency;
 using System.Reactive.Linq;
+using System.Reactive.Subjects;
 using System.Threading.Tasks;
-using AForge.Video;
 
 namespace CameraLiveView.Models
 {
@@ -15,116 +16,113 @@ namespace CameraLiveView.Models
     /// </summary>
     internal class Camera
     {
-        private readonly MJPEGStream _stream;
-
         public string Name { get; }
+
+        private static int Find(List<byte> data, IReadOnlyList<byte> target, int start)
+        {
+            if (start >= data.Count) return -1;
+            var idx = data.FindIndex(start, b => b == target[0]);
+            while (idx != -1 && idx < data.Count-1)
+            {
+                var sub = new byte[target.Count];
+                data.CopyTo(idx, sub, 0, target.Count);
+                if (sub.SequenceEqual(target))
+                {
+                    return idx;
+                }
+
+                idx = data.FindIndex(idx+1, b => b == target[0]);
+            }
+            return -1;
+        }
+
+        public IObservable<byte[]> CreateMjpegFrameGrabber(string url)
+        {
+            byte[] header = {0xFF, 0xD8, 0xFF};
+            byte[] footer = {0xFF, 0xD9};
+
+            return Observable.Create<byte[]>(
+                (obs, tok) =>
+                {
+                    return Task.Run(
+                        async () =>
+                              {
+                                  // you can get rid of this stuff late
+                                  // its just there to let us track the fifference
+                                  // between the inbound framerate and the outbound one
+                                  var sub = new Subject<int>();
+                                  var disp =
+                                      sub.Buffer(TimeSpan.FromSeconds(1))
+                                          .ObserveOn(new EventLoopScheduler())
+                                          .Subscribe(
+                                              x =>
+                                              {
+                                                  System.Diagnostics.Debug.WriteLine($"Frames Recieved Per Seconds {x.Count}");
+                                              });
+
+                                  try
+                                  {
+                                      using (var client = new HttpClient())
+                                      using (var req = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, tok).ConfigureAwait(false))
+                                      using (var s = await req.Content.ReadAsStreamAsync().ConfigureAwait(false))
+                                      {
+                                          int c = 1;
+                                          var bytes = new List<byte>();
+                                          while (!tok.IsCancellationRequested || c > 0)
+                                          {
+                                              var buf = new byte[32*1024];
+                                              c = await s.ReadAsync(buf, 0, buf.Length, tok).ConfigureAwait(false);
+                                              if (c > 0)
+                                              {
+                                                  bytes.AddRange(buf.Take(c));
+                                                  var a = Find(bytes, header, 0);
+                                                  var b = Find(bytes, footer, a+1);
+                                                  if (a != -1 && b != -1)
+                                                  {
+                                                      var len = b - a + 2;
+                                                      var frame = new byte[len];
+                                                      bytes.CopyTo(a, frame, 0, len);
+                                                      obs.OnNext(frame);
+                                                      sub.OnNext(1);
+                                                      bytes = new List<byte>(bytes.Skip(len));
+                                                  }
+                                              }
+                                          }
+                                      }
+                                      obs.OnCompleted();
+                                  }
+                                  catch (Exception e)
+                                  {
+                                      System.Diagnostics.Debug.WriteLine(e.ToString());
+                                      obs.OnError(e);
+                                  }
+
+                                  System.Diagnostics.Debug.WriteLine("Done fetching images from camera");
+                                  disp.Dispose();
+
+                                  // At some point, we will hav a network failure, and stop sending frames to the engine in here
+                                  // and the outbound push contexts will stop getting data to send.  If this give sup on really long timeouts
+                                  // thats good, but if it hangs, thats bad.  should be investigated.  can set timeouts in the httpclient
+                                  // stream/etc above.  But, real issue is, if we stop sending frames, what does the gui on the web page do?
+                                  // does it just sit there showing a static image?  does it crash and show a bad image icon?  
+                                  // should we detect failure and switch to a 'bad connection' static image/frame/video/whatever?
+                              }, tok);
+                })
+                .Publish()
+                .RefCount();
+        }
 
         public Camera(string name)
         {
             Name = name;
 
-            // tranlate name to the needed url somehow. for now im using one found on
-            // http://www.insecam.org/en/bycountry/US/
-            // youd want to construct it correctly with logins, settings, etc.
-            // and construct the url to point to the thing indicated by name.
+        // tranlate name to the needed url somehow. for now im using one found on
+        // http://www.insecam.org/en/bycountry/US/
+        // youd want to construct it correctly with logins, settings, etc.
+        // and construct the url to point to the thing indicated by name.
 
-            _stream = new MJPEGStream("http://73.0.175.10:80/mjpg/video.mjpg?COUNTER");
-
-            Frames = Observable.Create<byte[]>(
-                obs =>
-                {
-                    // So, this is a little annoying, as the aforge engine goes to the trouble of decoding 
-                    // the jpeg into a bitmap.  for the mjpeg stream, we want it back to a jpeg
-                    // and for the video we can use anything, but for now, the code is set to use a jpeg
-                    // as well.  so we will have to take this bitmap and re-encode it back to a jpeg
-                    // kind of wasteful, as it was already in the right format once.
-
-                    var disp = Observable.FromEventPattern<NewFrameEventHandler, NewFrameEventArgs>(
-                        handler => _stream.NewFrame += handler,
-                        handler => _stream.NewFrame -= handler)
-                        .Select(
-                            x =>
-                            {
-                                using (var ms = new MemoryStream())
-                                {
-                                    x.EventArgs.Frame.Save(ms, ImageFormat.Jpeg);
-                                    return ms.ToArray();
-                                }
-                            })
-                        .Subscribe(obs);
-
-                    _stream.Start();
-
-                    return () =>
-                           {
-                               _stream.Stop();
-                               _stream.WaitForStop();
-                               disp.Dispose();
-                           };
-
-                })
-                .Publish()
-                .RefCount();
-
-            // Create an observable to emit frames.
-            //Frames = Observable.Create<byte[]>(
-            //    (obs, tok) =>
-            //    {
-            //        System.Diagnostics.Debug.WriteLine($"Creating fake camera {name}");
-            //        return Task.Run(
-            //            async () =>
-            //                  {
-            //                      // this sits here and generates frames of jpeg, your app would contact the camera
-            //                      // and fetch the stream, grab each jpeg frame, and push it to the place below
-            //                      try
-            //                      {
-            //                          var i = 0;
-            //                          while (!tok.IsCancellationRequested) 
-            //                          // when all the subscriptions go away, this token will 
-            //                          // be canceled, use this to quite your http fetching when were done.
-            //                          {
-            //                              // we instead will cheat, create a simple 200x200 image
-            //                              using (var img = new Bitmap(200, 200))
-            //                              {
-            //                                  using (var g = Graphics.FromImage(img))
-            //                                  {
-            //                                      // draw some text on it
-            //                                      string text = $"Cam: {_name}  Fr: {i++}";
-
-            //                                      var drawFont = new Font("Arial", 10);
-            //                                      var drawBrush = new SolidBrush(Color.White);
-            //                                      var stringPonit = new PointF(0, 0);
-
-            //                                      g.DrawString(text, drawFont, drawBrush, stringPonit);
-            //                                  }
-
-            //                                  // save it off as a jpeg
-            //                                  using (var ms = new MemoryStream())
-            //                                  {
-            //                                      img.Save(ms, ImageFormat.Jpeg);
-            //                                      await ms.FlushAsync();
-            //                                      // This is where you push the image to the listeners.
-            //                                      // the results of your http fetch would be pushed here.
-            //                                      obs.OnNext(ms.ToArray());
-            //                                      await Task.Delay(TimeSpan.FromSeconds(1.0/r));
-            //                                      // delay this a bit, to only generate some N frames a second.
-            //                                      // only needed for fake camera.  Here we are set to what ever was passed in on initial creation, 10 by default
-            //                                  }
-            //                              }
-            //                          }
-            //                          obs.OnCompleted();
-            //                      }
-            //                      catch (Exception e)
-            //                      {
-            //                          obs.OnError(e);
-            //                      }
-            //                  }, tok);
-            //    })
-            //    .Publish()
-            //    .RefCount(); 
-            //// publish/refcount caues us to make a single image generator, and share it, but when were all done with it and no one wants it
-            // we will shut it down.  The first subscribe will cause the above thread to start, any future subscriptions
-            // will just share the same output, and then finally, when the last observer unsubscribes, it will stop the thing. 
+       
+            Frames = CreateMjpegFrameGrabber("http://216.227.246.9:8083/mjpg/video.mjpg?COUNTER");
         }
 
         public IObservable<byte[]> Frames { get; }

@@ -86,6 +86,7 @@ namespace CameraLiveView.Models
                             {
                                 // Took a while to get these just right.  the probezie and analyzeduration can probably go, but the rest
                                 // is needed.  Some things can be tuned, like crf.  smaller numbers for better quality. 
+                                // would love to be ablel to use vfr below, but not sure it will work right. 
                                 CustomInputArgs = "-use_wallclock_as_timestamps 1 -vsync cfr -re ",
                                 CustomOutputArgs ="-g 2 -crf 23 -tune zerolatency -preset ultrafast -movflags frag_keyframe+empty_moov -pix_fmt yuvj420p "
                             });
