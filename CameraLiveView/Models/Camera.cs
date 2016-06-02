@@ -6,6 +6,7 @@ using System.Reactive.Concurrency;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Threading.Tasks;
+using System.Web.Razor.Generator;
 
 namespace CameraLiveView.Models
 {
@@ -18,20 +19,20 @@ namespace CameraLiveView.Models
     {
         public string Name { get; }
 
-        private static int Find(List<byte> data, IReadOnlyList<byte> target, int start)
+        private static int Find(byte[] data, int dl, IReadOnlyList<byte> target, int start)
         {
-            if (start >= data.Count) return -1;
-            var idx = data.FindIndex(start, b => b == target[0]);
-            while (idx != -1 && idx < data.Count-1)
+            if (start >= dl) return -1;
+            var idx =  Array.FindIndex(data, start, b => b == target[0]);
+            while (idx != -1 && idx < dl-1)
             {
                 var sub = new byte[target.Count];
-                data.CopyTo(idx, sub, 0, target.Count);
+                Buffer.BlockCopy(data, idx, sub, 0, target.Count);
                 if (sub.SequenceEqual(target))
                 {
                     return idx;
                 }
 
-                idx = data.FindIndex(idx+1, b => b == target[0]);
+                idx = Array.FindIndex(data, idx+1, b => b == target[0]);
             }
             return -1;
         }
@@ -66,25 +67,38 @@ namespace CameraLiveView.Models
                                       using (var req = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, tok).ConfigureAwait(false))
                                       using (var s = await req.Content.ReadAsStreamAsync().ConfigureAwait(false))
                                       {
-                                          int c = 1;
-                                          var bytes = new List<byte>();
-                                          while (!tok.IsCancellationRequested || c > 0)
+                                          // switching this to use buffers should remove some pressure on the 
+                                          // garbage collector.  the othe version worked, but this should be incrementally
+                                          // faster, and reduce the amount of GC pausing we run into.
+                                          var buffer = new byte[32*1024];
+                                          var tempBuf = new byte[32 * 1024];
+                                          var postEndIndex = 0;
+                                          var readCount = 1;
+
+                                          while (!tok.IsCancellationRequested && readCount > 0)
                                           {
-                                              var buf = new byte[32*1024];
-                                              c = await s.ReadAsync(buf, 0, buf.Length, tok).ConfigureAwait(false);
-                                              if (c > 0)
+                                              readCount = await s.ReadAsync(tempBuf, 0, tempBuf.Length, tok).ConfigureAwait(false);
+                                              if (readCount > 0)
                                               {
-                                                  bytes.AddRange(buf.Take(c));
-                                                  var a = Find(bytes, header, 0);
-                                                  var b = Find(bytes, footer, a+1);
-                                                  if (a != -1 && b != -1)
+                                                  if (buffer.Length - postEndIndex < readCount)
                                                   {
-                                                      var len = b - a + 2;
-                                                      var frame = new byte[len];
-                                                      bytes.CopyTo(a, frame, 0, len);
+                                                      Array.Resize(ref buffer, buffer.Length * 2);
+                                                  }
+                                                  Buffer.BlockCopy(tempBuf,0,buffer,postEndIndex,readCount);
+                                                  postEndIndex += readCount;
+                                                  var headerIndex = Find(buffer, postEndIndex, header, 0);
+                                                  var footerIndex = Find(buffer, postEndIndex, footer, headerIndex+1);
+                                                  if (headerIndex != -1 && footerIndex != -1)
+                                                  {
+                                                      var postFooterIndex = footerIndex + 2;
+                                                      var frameLength = postFooterIndex - headerIndex;
+                                                      var frame = new byte[frameLength];
+                                                      Buffer.BlockCopy(buffer, headerIndex, frame, 0, frameLength);
                                                       obs.OnNext(frame);
                                                       sub.OnNext(1);
-                                                      bytes = new List<byte>(bytes.Skip(len));
+                                                      var tailLength = postEndIndex - postFooterIndex;
+                                                      Buffer.BlockCopy(buffer, postFooterIndex, buffer, 0, tailLength);
+                                                      postEndIndex = tailLength;
                                                   }
                                               }
                                           }
