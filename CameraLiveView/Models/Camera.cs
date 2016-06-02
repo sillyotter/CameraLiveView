@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
 using System.Reactive.Linq;
@@ -17,13 +16,13 @@ namespace CameraLiveView.Models
     {
         public string Name { get; }
 
-        private static int Find(byte[] data, int dl, IReadOnlyList<byte> target, int start)
+        private static int Find(byte[] data, int dl, byte[] target, int start)
         {
             if (start >= dl) return -1;
             var idx =  Array.FindIndex(data, start, b => b == target[0]);
             while (idx != -1 && idx < dl-1)
             {
-                var seg = new ArraySegment<byte>(data, idx, target.Count);
+                var seg = new ArraySegment<byte>(data, idx, target.Length);
                 if (seg.SequenceEqual(target))
                 {
                     return idx;

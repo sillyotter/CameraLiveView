@@ -11,7 +11,7 @@ namespace CameraLiveView.Models
     internal class JpegImageStream
     {
         private readonly Camera _c;
-        public object Boundary { get; } = "XXXBoundaryXXX";
+        public object Boundary { get; } = "CMLV";
         private static readonly byte[] NewLine = Encoding.UTF8.GetBytes("\r\n");
 
         public JpegImageStream(string name)
@@ -44,15 +44,6 @@ namespace CameraLiveView.Models
             {
                 Console.WriteLine("done sending frames to http client");
             }
-
-
-            // MJPEG only works with real browsers.  Its fast, starts immediately, and should be ok on bandwidth,
-            // but it doesnt work with IE.  In theory there are active X controls that will do this, but I havent seen
-            // any. also java controls, but thats worse than ActiveX.  
-
-            // As ususal, IE is a pile of junk.  But, you probably have to support it. You could, perhaps, use this mjpeg version
-            // when your code detects its on a real browser (webkit,firefox,chrome) and use the other version (videocontroller on down)
-            // only of IE.
         }
     }
 }
