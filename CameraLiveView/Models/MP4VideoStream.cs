@@ -78,6 +78,8 @@ namespace CameraLiveView.Models
         {
             // This is way too complex.  just to get around a problem in the converter.  can recreate ourselves to just
             // call ffmpeg correctly and get rid of much of this.
+            // debug, grab the full command line, and write my own around system.diagnostics.process
+
             using (var outputQs = new QueueStream())
             {
                 var t = _converter.ConvertLiveMedia(

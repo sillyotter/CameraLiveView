@@ -100,8 +100,14 @@ namespace CameraLiveView.Models
                                                       // need to track being done.  When we have N subscribers, each gets one, need
                                                       // somehow to know how many so we can tell when they are all done
                                                       // also in some cases, te frame senders will skip frames, how to tell those im done
-                                                      // with them?  For now, just allocate them.  
+                                                      // with them?  For now, just allocate them?
 
+                                                      // I can be fairly sure they are done after N seconds has passed.  the most recent frames
+                                                      // get sent, old ones are dropped, it doesnt take that long for all of the sender threads
+                                                      // to send the most recent one, so what if I just used a buffer manager, created the buffers here
+                                                      // and somehow scheduled the thing to be returned in 5 seconds?  2?  would decrese LOH 
+                                                      // allocations and fragmentations a good deal, would be rather large buffer though, with 50 frames 
+                                                      // worth of data sitting around;
 
                                                       Buffer.BlockCopy(buffer, headerIndex, frame, 0, frameLength);
                                                       obs.OnNext(frame);
