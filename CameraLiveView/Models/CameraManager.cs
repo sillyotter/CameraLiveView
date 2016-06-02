@@ -13,14 +13,7 @@ namespace CameraLiveView.Models
         }
 
         private static readonly Lazy<CameraManager> SingletonInstance = new Lazy<CameraManager>(
-            () =>
-            {
-                //var domain = AppDomain.CreateDomain("camManagerDomain");
-                //var inst = (CameraManager)domain.CreateInstanceAndUnwrap(typeof(CameraManager).Assembly.FullName, typeof(CameraManager).FullName);
-                //return inst;
-                // above was a crude attempt ant making the object live in a different appdomain to prevent duplication
-                return new CameraManager();
-            });
+            () => new CameraManager());
 
         public static CameraManager Instance => SingletonInstance.Value;
 

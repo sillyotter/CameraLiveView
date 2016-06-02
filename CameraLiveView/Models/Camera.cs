@@ -2,11 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
-using System.Reactive.Concurrency;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Threading.Tasks;
-using System.Web.Razor.Generator;
 
 namespace CameraLiveView.Models
 {
@@ -15,7 +13,7 @@ namespace CameraLiveView.Models
     /// This version is a simulator, it makes its own images.  The real one woul dbe modified to fetch the values
     /// from the real physical camera with a http client.
     /// </summary>
-    internal class Camera
+    public class Camera
     {
         public string Name { get; }
 
@@ -25,9 +23,8 @@ namespace CameraLiveView.Models
             var idx =  Array.FindIndex(data, start, b => b == target[0]);
             while (idx != -1 && idx < dl-1)
             {
-                var sub = new byte[target.Count];
-                Buffer.BlockCopy(data, idx, sub, 0, target.Count);
-                if (sub.SequenceEqual(target))
+                var seg = new ArraySegment<byte>(data, idx, target.Count);
+                if (seg.SequenceEqual(target))
                 {
                     return idx;
                 }
@@ -37,98 +34,83 @@ namespace CameraLiveView.Models
             return -1;
         }
 
-        public IObservable<byte[]> CreateMjpegFrameGrabber(string url)
+        public IObservable<Tuple<byte[],int>> CreateMjpegFrameGrabber(string url)
         {
             byte[] header = {0xFF, 0xD8, 0xFF};
             byte[] footer = {0xFF, 0xD9};
 
-            return Observable.Create<byte[]>(
+            return Observable.Create<Tuple<byte[], int>>(
                 (obs, tok) =>
                 {
                     return Task.Run(
                         async () =>
                               {
-                                  // you can get rid of this stuff late
-                                  // its just there to let us track the fifference
-                                  // between the inbound framerate and the outbound one
-                                  var sub = new Subject<int>();
-                                  var disp =
-                                      sub.Buffer(TimeSpan.FromSeconds(1))
-                                          .ObserveOn(new EventLoopScheduler())
-                                          .Subscribe(
-                                              x =>
-                                              {
-                                                  System.Diagnostics.Debug.WriteLine($"Frames Recieved Per Seconds {x.Count}");
-                                              });
-
                                   try
                                   {
                                       using (var client = new HttpClient())
                                       using (var req = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, tok).ConfigureAwait(false))
                                       using (var s = await req.Content.ReadAsStreamAsync().ConfigureAwait(false))
                                       {
-                                          // switching this to use buffers should remove some pressure on the 
-                                          // garbage collector.  the othe version worked, but this should be incrementally
-                                          // faster, and reduce the amount of GC pausing we run into.
-                                          var buffer = new byte[32*1024];
-                                          var tempBuf = new byte[32 * 1024];
-                                          var postEndIndex = 0;
-                                          var readCount = 1;
-
-                                          while (!tok.IsCancellationRequested && readCount > 0)
+                                        var buffer = GlobalBufferManager.Instance.TakeBuffer(32*1024);
+                                        var tempBuf = GlobalBufferManager.Instance.TakeBuffer(32*1024);
+                                        var postEndIndex = 0;
+                                        var readCount = 1;
+                                          try
                                           {
-                                              readCount = await s.ReadAsync(tempBuf, 0, tempBuf.Length, tok).ConfigureAwait(false);
-                                              if (readCount > 0)
+
+                                              while (!tok.IsCancellationRequested && readCount > 0)
                                               {
-                                                  if (buffer.Length - postEndIndex < readCount)
+                                                  readCount = await s.ReadAsync(tempBuf, 0, tempBuf.Length, tok).ConfigureAwait(false);
+                                                  if (readCount > 0)
                                                   {
-                                                      Array.Resize(ref buffer, buffer.Length * 2);
-                                                  }
-                                                  Buffer.BlockCopy(tempBuf,0,buffer,postEndIndex,readCount);
-                                                  postEndIndex += readCount;
-                                                  var headerIndex = Find(buffer, postEndIndex, header, 0);
-                                                  var footerIndex = Find(buffer, postEndIndex, footer, headerIndex+1);
-                                                  if (headerIndex != -1 && footerIndex != -1)
-                                                  {
-                                                      var postFooterIndex = footerIndex + 2;
-                                                      var frameLength = postFooterIndex - headerIndex;
+                                                      if (buffer.Length - postEndIndex < readCount)
+                                                      {
+                                                          var nb = GlobalBufferManager.Instance.TakeBuffer(buffer.Length*2);
+                                                          Buffer.BlockCopy(buffer, 0, nb, 0, buffer.Length);
+                                                          var temp = buffer;
+                                                          buffer = nb;
+                                                          GlobalBufferManager.Instance.ReturnBuffer(temp);
+                                                      }
+                                                      Buffer.BlockCopy(tempBuf,0,buffer,postEndIndex,readCount);
+                                                      postEndIndex += readCount;
+                                                      var headerIndex = Find(buffer, postEndIndex, header, 0);
+                                                      var footerIndex = Find(buffer, postEndIndex, footer, headerIndex+1);
+                                                      if (headerIndex != -1 && footerIndex != -1)
+                                                      {
+                                                          var postFooterIndex = footerIndex + 2;
+                                                          var frameLength = postFooterIndex - headerIndex;
 
-                                                      var frame = new byte[frameLength];
-                                                      // we could potentially use some kind of pool of frame buffers here
-                                                      // to keep from allocating them all the time.  Not sure how to know they are done
-                                                      // and return them. BufferManager class might handle some of it, but still
-                                                      // need to track being done.  When we have N subscribers, each gets one, need
-                                                      // somehow to know how many so we can tell when they are all done
-                                                      // also in some cases, te frame senders will skip frames, how to tell those im done
-                                                      // with them?  For now, just allocate them?
+                                                          var frame = GlobalBufferManager.Instance.TakeBuffer(frameLength);
+                                                          // instead of just allocating a big buffer for each frame, which will 
+                                                          // in time resulting in fragmenting the LOH, we will use this buffer manager
+                                                          // which keeps a pool of reusable buffers around for ever, allowing us to ignore
+                                                          // fragmentation and loh GC pauses.
 
-                                                      // I can be fairly sure they are done after N seconds has passed.  the most recent frames
-                                                      // get sent, old ones are dropped, it doesnt take that long for all of the sender threads
-                                                      // to send the most recent one, so what if I just used a buffer manager, created the buffers here
-                                                      // and somehow scheduled the thing to be returned in 5 seconds?  2?  would decrese LOH 
-                                                      // allocations and fragmentations a good deal, would be rather large buffer though, with 50 frames 
-                                                      // worth of data sitting around;
-
-                                                      Buffer.BlockCopy(buffer, headerIndex, frame, 0, frameLength);
-                                                      obs.OnNext(frame);
-                                                      sub.OnNext(1);
-                                                      var tailLength = postEndIndex - postFooterIndex;
-                                                      Buffer.BlockCopy(buffer, postFooterIndex, buffer, 0, tailLength);
-                                                      postEndIndex = tailLength;
+                                                          Buffer.BlockCopy(buffer, headerIndex, frame, 0, frameLength);
+                                                          obs.OnNext(Tuple.Create(frame, frameLength));
+                                                          BytesToBeReturnedToBuffer.OnNext(frame);
+                                                          var tailLength = postEndIndex - postFooterIndex;
+                                                          Buffer.BlockCopy(buffer, postFooterIndex, buffer, 0, tailLength);
+                                                          postEndIndex = tailLength;
+                                                      }
                                                   }
                                               }
+                                          }
+                                          finally
+                                          {
+                                              GlobalBufferManager.Instance.ReturnBuffer(buffer);
+                                              GlobalBufferManager.Instance.ReturnBuffer(tempBuf);
                                           }
                                       }
                                       obs.OnCompleted();
                                   }
                                   catch (Exception e)
                                   {
-                                      System.Diagnostics.Debug.WriteLine(e.ToString());
+                                      Console.WriteLine(e.ToString());
                                       obs.OnError(e);
                                   }
 
-                                  System.Diagnostics.Debug.WriteLine("Done fetching images from camera");
-                                  disp.Dispose();
+                                  Console.WriteLine("Done fetching images from camera");
 
                                   // At some point, we will hav a network failure, and stop sending frames to the engine in here
                                   // and the outbound push contexts will stop getting data to send.  If this give sup on really long timeouts
@@ -140,6 +122,17 @@ namespace CameraLiveView.Models
                 })
                 .Publish()
                 .RefCount();
+        }
+
+        
+        private static readonly Subject<byte[]> BytesToBeReturnedToBuffer = new Subject<byte[]>();
+
+        static Camera()
+        {
+            // because we cant possibly know when the frames are done, we simply wait for 2 seconds, in which time they
+            // really should be done, and then we return them to the buffer.  Means we may have 2 seconds * framerate * nr of cameras
+            // buffers out at any one time.  
+            BytesToBeReturnedToBuffer.Delay(TimeSpan.FromSeconds(2)).Subscribe(bytes => GlobalBufferManager.Instance.ReturnBuffer(bytes));
         }
 
         public Camera(string name)
@@ -155,6 +148,6 @@ namespace CameraLiveView.Models
             Frames = CreateMjpegFrameGrabber("http://216.227.246.9:8083/mjpg/video.mjpg?COUNTER");
         }
 
-        public IObservable<byte[]> Frames { get; }
+        public IObservable<Tuple<byte[], int>> Frames { get; }
     }
 }

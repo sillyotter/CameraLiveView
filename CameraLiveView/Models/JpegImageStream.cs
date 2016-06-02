@@ -2,9 +2,7 @@ using System;
 using System.IO;
 using System.Net;
 using System.Net.Http;
-using System.Reactive.Concurrency;
 using System.Reactive.Linq;
-using System.Reactive.Subjects;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -24,40 +22,27 @@ namespace CameraLiveView.Models
 
         public async Task WriteToStream(Stream outputStream, HttpContent content, TransportContext context)
         {
-            var sub = new Subject<int>();
-
-            // you can get rid of this later, just used to keep track of the difference betwene the rate we get them from the camera and the rate 
-            // we send them to the http client.
-            var disp = sub
-                .Buffer(TimeSpan.FromSeconds(1))
-                .ObserveOn(new EventLoopScheduler())
-                .Subscribe(
-                    x =>
-                    {
-                        System.Diagnostics.Debug.WriteLine($"Frames sent per second {x.Count}");
-                    });
-
             try
             {
                 // The camera exposes an IObservable called Frames.  Latest will provide us with an IEnumreable that
                 // always returns the most recent value, or blocks if there has ben none since the last fetch.
                 // This is so that if we are generating images faster than we can send them, we will drop the unneeded ones
-                foreach (var bytes in _c.Frames.Latest())
+                foreach (var item in _c.Frames.Latest())
                 {
+                    var bytes = item.Item1;
+                    var len = item.Item2;
                     // write them to the output stream
-                    var header = $"--{Boundary}\r\nContent-Type: image/jpeg\r\nContent-Length: {bytes.Length}\r\n\r\n";
+                    var header = $"--{Boundary}\r\nContent-Type: image/jpeg\r\nContent-Length: {len}\r\n\r\n";
                     var headerData = Encoding.UTF8.GetBytes(header);
-                    await outputStream.WriteAsync(headerData, 0, headerData.Length);
-                    await outputStream.WriteAsync(bytes, 0, bytes.Length);
-                    await outputStream.WriteAsync(NewLine, 0, NewLine.Length);
-                    await outputStream.FlushAsync();
-                    sub.OnNext(1);
+                    await outputStream.WriteAsync(headerData, 0, headerData.Length).ConfigureAwait(false);
+                    await outputStream.WriteAsync(bytes, 0, len).ConfigureAwait(false);
+                    await outputStream.WriteAsync(NewLine, 0, NewLine.Length).ConfigureAwait(false);
+                    await outputStream.FlushAsync().ConfigureAwait(false);
                 }
             }
             finally
             {
-                disp.Dispose();
-                System.Diagnostics.Debug.WriteLine("done sending frames to http client");
+                Console.WriteLine("done sending frames to http client");
             }
 
 

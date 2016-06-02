@@ -1,7 +1,5 @@
-using System;
 using System.Net.Http;
 using System.Net.Http.Headers;
-using System.Web;
 using System.Web.Http;
 using CameraLiveView.Models;
 
@@ -15,7 +13,6 @@ namespace CameraLiveView.Controllers
     {
         public HttpResponseMessage Get(string id)
         {
-            var q = HttpUtility.ParseQueryString(Request.RequestUri.Query);
             var vstr = new Mp4VideoStream(id);
             var response = Request.CreateResponse();
             response.Content = new PushStreamContent(vstr.WriteToStream, "video/mp4");
