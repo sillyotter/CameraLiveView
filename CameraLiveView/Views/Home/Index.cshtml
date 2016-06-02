@@ -15,6 +15,18 @@
         {
             <img src="/api/camera/c1" />
         }
+
+        @if (Request.Browser.Browser == "InternetExplorer") // this isnt probably the best way to do it, but...
+        {
+            <video src="/api/video/c2" autoplay preload>
+                Your browser does not support the
+                <code> video</code> element.
+            </video>
+        }
+        else
+        {
+            <img src="/api/camera/c2" />
+        }
     </div>
 </div>
 

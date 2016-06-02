@@ -130,7 +130,8 @@ namespace CameraLiveView.Models
         {
             // because we cant possibly know when the frames are done, we simply wait for 2 seconds, in which time they
             // really should be done, and then we return them to the buffer.  Means we may have 2 seconds * framerate * nr of cameras
-            // buffers out at any one time.  
+            // buffers out at any one time.  If the system is really bogged down, and it takes more than 2 seconds to send a frame out, make
+            // this bigger, and figure out a way to get that going faster.  Maybe re-encode the jpegs down to something smaller, etc.
             BytesToBeReturnedToBuffer.Delay(TimeSpan.FromSeconds(2)).Subscribe(bytes => GlobalBufferManager.Instance.ReturnBuffer(bytes));
         }
 
@@ -138,13 +139,15 @@ namespace CameraLiveView.Models
         {
             Name = name;
 
-        // tranlate name to the needed url somehow. for now im using one found on
-        // http://www.insecam.org/en/bycountry/US/
-        // youd want to construct it correctly with logins, settings, etc.
-        // and construct the url to point to the thing indicated by name.
+            // tranlate name to the needed url somehow. for now im using one found on
+            // http://www.insecam.org/en/bycountry/US/
+            // youd want to construct it correctly with logins, settings, etc.
+            // and construct the url to point to the thing indicated by name.
 
-       
-            Frames = CreateMjpegFrameGrabber("http://216.227.246.9:8083/mjpg/video.mjpg?COUNTER");
+            //"http://50.199.22.21:84/mjpg/video.mjpg?COUNTER"
+
+
+            Frames = CreateMjpegFrameGrabber(name == "c1" ? "http://50.199.22.21:84/mjpg/video.mjpg?COUNTER" : "http://216.227.246.9:8083/mjpg/video.mjpg?COUNTER");
         }
 
         public IObservable<Tuple<byte[], int>> Frames { get; }
