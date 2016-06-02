@@ -92,7 +92,17 @@ namespace CameraLiveView.Models
                                                   {
                                                       var postFooterIndex = footerIndex + 2;
                                                       var frameLength = postFooterIndex - headerIndex;
+
                                                       var frame = new byte[frameLength];
+                                                      // we could potentially use some kind of pool of frame buffers here
+                                                      // to keep from allocating them all the time.  Not sure how to know they are done
+                                                      // and return them. BufferManager class might handle some of it, but still
+                                                      // need to track being done.  When we have N subscribers, each gets one, need
+                                                      // somehow to know how many so we can tell when they are all done
+                                                      // also in some cases, te frame senders will skip frames, how to tell those im done
+                                                      // with them?  For now, just allocate them.  
+
+
                                                       Buffer.BlockCopy(buffer, headerIndex, frame, 0, frameLength);
                                                       obs.OnNext(frame);
                                                       sub.OnNext(1);

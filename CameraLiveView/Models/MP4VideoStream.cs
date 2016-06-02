@@ -76,6 +76,8 @@ namespace CameraLiveView.Models
 
         public async Task WriteToStream(Stream outputStream, HttpContent content, TransportContext context)
         {
+            // This is way too complex.  just to get around a problem in the converter.  can recreate ourselves to just
+            // call ffmpeg correctly and get rid of much of this.
             using (var outputQs = new QueueStream())
             {
                 var t = _converter.ConvertLiveMedia(
