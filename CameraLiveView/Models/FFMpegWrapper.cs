@@ -39,7 +39,7 @@ namespace CameraLiveView.Models
                       {
                           try
                           {
-                              foreach (var item in frames.Latest())
+                              foreach (var item in frames.Latest()) // as in jpeg stream. all time is spent waiting for frames here, meaning weve got this thing pretty well tuned
                               {
                                   var frame = item.Item1;
                                   var len = item.Item2;

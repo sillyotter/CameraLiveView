@@ -24,6 +24,8 @@ namespace CameraLiveView.Models
         // which is a real issue in something like this.  The max requseted size of 128K comes from the notion that the jpeg frame grabber so far has never needed
         // more than 64K, so I doubled that, to be safe. 
         // Im not sure if this is per app domain or total, but im assuming per app domain. 
+        // this could be made smaller.  if you know the nr of cameras is less, or that the frame size is smaller, or you are certain you can manage with a 
+        // shorter frame buffer reclimation delay.  Or maybe you need it bigger.  
         private readonly BufferManager _bm  = BufferManager.CreateBufferManager(TotalBufferMemory, MaxBufferSize);
 
         public byte[] TakeBuffer(int size)

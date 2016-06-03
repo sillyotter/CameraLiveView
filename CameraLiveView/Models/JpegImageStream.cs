@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Net;
 using System.Net.Http;
+using System.Reactive.Concurrency;
 using System.Reactive.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -28,7 +29,7 @@ namespace CameraLiveView.Models
                 // The camera exposes an IObservable called Frames.  Latest will provide us with an IEnumreable that
                 // always returns the most recent value, or blocks if there has ben none since the last fetch.
                 // This is so that if we are generating images faster than we can send them, we will drop the unneeded ones
-                foreach (var item in _c.Frames.Latest())
+                foreach (var item in _c.Frames.ObserveOn(TaskPoolScheduler.Default).Latest())
                 {
                     var bytes = item.Item1;
                     var len = item.Item2;
@@ -39,7 +40,12 @@ namespace CameraLiveView.Models
                     await outputStream.WriteAsync(bytes, 0, len).ConfigureAwait(false);
                     await outputStream.WriteAsync(NewLine, 0, NewLine.Length).ConfigureAwait(false);
                     await outputStream.FlushAsync().ConfigureAwait(false);
+
                 }
+                // after performance tuning, profiing says that the only slow thing we do that takes any measureable time is wait
+                // for frames above.  We could stop, and just subscribe to it, and have it write every frame out, but if the outbound stream
+                // is too slow, then we will start buffering up old frames trying to send them.  We really need latest here to allow us to 
+                // drop frames we arent in a position to send.  I just wish it wasnt a blocking call, if it were async, that would be great.
             }
             finally
             {
