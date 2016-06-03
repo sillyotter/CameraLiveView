@@ -47,7 +47,7 @@ namespace CameraLiveView.Models
 
         public IObservable<Tuple<byte[], int>> Frames { get; }
 
-        private IObservable<Tuple<byte[], int>> CreateMjpegFrameGrabber(string url)
+        private static IObservable<Tuple<byte[], int>> CreateMjpegFrameGrabber(string url)
         {
             return Observable.Create<Tuple<byte[], int>>(
                 (obs, tok) =>
@@ -92,7 +92,7 @@ namespace CameraLiveView.Models
                                                           var frameLength = postFooterIndex - headerIndex;
 
                                                           var frame = GlobalBufferManager.Instance.TakeBuffer(frameLength);
-                                                          // instead of just allocating a big buffer for each frame, which will 
+                                                          // instead of just allocating a big buffer for each frame, which may 
                                                           // in time resulting in fragmenting the LOH, we will use this buffer manager
                                                           // which keeps a pool of reusable buffers around for ever, allowing us to ignore
                                                           // fragmentation and loh GC pauses.
