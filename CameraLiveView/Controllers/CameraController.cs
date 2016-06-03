@@ -17,8 +17,7 @@ namespace CameraLiveView.Controllers
             var response = Request.CreateResponse();
             response.Content = new PushStreamContent(imageStream.WriteToStream);
             response.Content.Headers.Remove("Content-Type");
-            response.Content.Headers.TryAddWithoutValidation(
-                "Content-Type", "multipart/x-mixed-replace;boundary=" + imageStream.Boundary);
+            response.Content.Headers.TryAddWithoutValidation("Content-Type", "multipart/x-mixed-replace;boundary=" + JpegImageStream.Boundary);
             response.Headers.CacheControl = new CacheControlHeaderValue
             {
                 NoCache = true,

@@ -1,5 +1,4 @@
 using System;
-using System.Linq;
 using System.Net.Http;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
@@ -16,28 +15,40 @@ namespace CameraLiveView.Models
     {
         public string Name { get; }
 
-        private static int Find(byte[] data, int dl, byte[] target, int start)
-        {
-            if (start >= dl) return -1;
-            var idx =  Array.FindIndex(data, start, b => b == target[0]);
-            while (idx != -1 && idx < dl-1)
-            {
-                var seg = new ArraySegment<byte>(data, idx, target.Length);
-                if (seg.SequenceEqual(target))
-                {
-                    return idx;
-                }
+        private static readonly byte[] Header = {0xFF, 0xD8, 0xFF};
+        private static readonly byte[] Footer = {0xFF, 0xD9};
+        private const int DefaultBufferSize = 32*1024;
+        private const double DefaultFrameLifespanSeconds = 2.0;
 
-                idx = Array.FindIndex(data, idx+1, b => b == target[0]);
-            }
-            return -1;
+        private static readonly Subject<byte[]> BytesToBeReturnedToBuffer = new Subject<byte[]>();
+
+        static Camera()
+        {
+            // because we cant possibly know when the frames are done, we simply wait for 2 seconds, in which time they
+            // really should be done, and then we return them to the buffer.  Means we may have 2 seconds * framerate * nr of cameras
+            // buffers out at any one time.  If the system is really bogged down, and it takes more than 2 seconds to send a frame out, make
+            // this bigger, and figure out a way to get that going faster.  Maybe re-encode the jpegs down to something smaller, etc.
+            BytesToBeReturnedToBuffer
+                .Delay(TimeSpan.FromSeconds(DefaultFrameLifespanSeconds))
+                .Subscribe(bytes => GlobalBufferManager.Instance.ReturnBuffer(bytes));
         }
 
-        public IObservable<Tuple<byte[],int>> CreateMjpegFrameGrabber(string url)
+        public Camera(string name)
         {
-            byte[] header = {0xFF, 0xD8, 0xFF};
-            byte[] footer = {0xFF, 0xD9};
+            Name = name;
 
+            // http://www.insecam.org/en/bycountry/US/
+
+            Frames = CreateMjpegFrameGrabber(
+                name == "c1"
+                    ? "http://50.199.22.21:84/mjpg/video.mjpg?COUNTER"
+                    : "http://216.227.246.9:8083/mjpg/video.mjpg?COUNTER");
+        }
+
+        public IObservable<Tuple<byte[], int>> Frames { get; }
+
+        private IObservable<Tuple<byte[], int>> CreateMjpegFrameGrabber(string url)
+        {
             return Observable.Create<Tuple<byte[], int>>(
                 (obs, tok) =>
                 {
@@ -50,13 +61,12 @@ namespace CameraLiveView.Models
                                       using (var req = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, tok).ConfigureAwait(false))
                                       using (var s = await req.Content.ReadAsStreamAsync().ConfigureAwait(false))
                                       {
-                                        var buffer = GlobalBufferManager.Instance.TakeBuffer(32*1024);
-                                        var tempBuf = GlobalBufferManager.Instance.TakeBuffer(32*1024);
-                                        var postEndIndex = 0;
-                                        var readCount = 1;
+                                          var buffer = GlobalBufferManager.Instance.TakeBuffer(DefaultBufferSize);
+                                          var tempBuf = GlobalBufferManager.Instance.TakeBuffer(DefaultBufferSize);
+                                          var postEndIndex = 0;
+                                          var readCount = 1;
                                           try
                                           {
-
                                               while (!tok.IsCancellationRequested && readCount > 0)
                                               {
                                                   readCount = await s.ReadAsync(tempBuf, 0, tempBuf.Length, tok).ConfigureAwait(false);
@@ -70,10 +80,12 @@ namespace CameraLiveView.Models
                                                           buffer = nb;
                                                           GlobalBufferManager.Instance.ReturnBuffer(temp);
                                                       }
-                                                      Buffer.BlockCopy(tempBuf,0,buffer,postEndIndex,readCount);
+
+                                                      Buffer.BlockCopy(tempBuf, 0, buffer, postEndIndex, readCount);
                                                       postEndIndex += readCount;
-                                                      var headerIndex = Find(buffer, postEndIndex, header, 0);
-                                                      var footerIndex = Find(buffer, postEndIndex, footer, headerIndex+1);
+                                                      var headerIndex = buffer.Find(postEndIndex, Header, 0);
+                                                      var footerIndex = buffer.Find(postEndIndex, Footer, headerIndex + 1);
+
                                                       if (headerIndex != -1 && footerIndex != -1)
                                                       {
                                                           var postFooterIndex = footerIndex + 2;
@@ -86,8 +98,10 @@ namespace CameraLiveView.Models
                                                           // fragmentation and loh GC pauses.
 
                                                           Buffer.BlockCopy(buffer, headerIndex, frame, 0, frameLength);
+
                                                           obs.OnNext(Tuple.Create(frame, frameLength));
                                                           BytesToBeReturnedToBuffer.OnNext(frame);
+
                                                           var tailLength = postEndIndex - postFooterIndex;
                                                           Buffer.BlockCopy(buffer, postFooterIndex, buffer, 0, tailLength);
                                                           postEndIndex = tailLength;
@@ -122,34 +136,5 @@ namespace CameraLiveView.Models
                 .Publish()
                 .RefCount();
         }
-
-        
-        private static readonly Subject<byte[]> BytesToBeReturnedToBuffer = new Subject<byte[]>();
-
-        static Camera()
-        {
-            // because we cant possibly know when the frames are done, we simply wait for 2 seconds, in which time they
-            // really should be done, and then we return them to the buffer.  Means we may have 2 seconds * framerate * nr of cameras
-            // buffers out at any one time.  If the system is really bogged down, and it takes more than 2 seconds to send a frame out, make
-            // this bigger, and figure out a way to get that going faster.  Maybe re-encode the jpegs down to something smaller, etc.
-            BytesToBeReturnedToBuffer.Delay(TimeSpan.FromSeconds(2)).Subscribe(bytes => GlobalBufferManager.Instance.ReturnBuffer(bytes));
-        }
-
-        public Camera(string name)
-        {
-            Name = name;
-
-            // tranlate name to the needed url somehow. for now im using one found on
-            // http://www.insecam.org/en/bycountry/US/
-            // youd want to construct it correctly with logins, settings, etc.
-            // and construct the url to point to the thing indicated by name.
-
-            //"http://50.199.22.21:84/mjpg/video.mjpg?COUNTER"
-
-
-            Frames = CreateMjpegFrameGrabber(name == "c1" ? "http://50.199.22.21:84/mjpg/video.mjpg?COUNTER" : "http://216.227.246.9:8083/mjpg/video.mjpg?COUNTER");
-        }
-
-        public IObservable<Tuple<byte[], int>> Frames { get; }
     }
 }

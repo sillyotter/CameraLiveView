@@ -5,11 +5,15 @@ namespace CameraLiveView.Models
 {
     public class GlobalBufferManager
     {
+        private const int TotalBufferMemory = 100*1024*1024;
+        private const int MaxBufferSize = 128*1024;
+
         private GlobalBufferManager()
         {
         }
 
         private static readonly Lazy<GlobalBufferManager> SingletonInstance = new Lazy<GlobalBufferManager>(() => new GlobalBufferManager());
+
         public static GlobalBufferManager Instance => SingletonInstance.Value;
 
         // I really dont know the right values for these buffers.  It largely depends on the installation
@@ -20,7 +24,7 @@ namespace CameraLiveView.Models
         // which is a real issue in something like this.  The max requseted size of 128K comes from the notion that the jpeg frame grabber so far has never needed
         // more than 64K, so I doubled that, to be safe. 
         // Im not sure if this is per app domain or total, but im assuming per app domain. 
-        private readonly BufferManager _bm  = BufferManager.CreateBufferManager(100*1024*1024, 128*1024);
+        private readonly BufferManager _bm  = BufferManager.CreateBufferManager(TotalBufferMemory, MaxBufferSize);
 
         public byte[] TakeBuffer(int size)
         {
@@ -31,6 +35,5 @@ namespace CameraLiveView.Models
         {
             _bm.ReturnBuffer(buf);
         }
-
     }
 }

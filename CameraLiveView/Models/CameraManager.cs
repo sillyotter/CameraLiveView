@@ -6,18 +6,16 @@ namespace CameraLiveView.Models
     /// <summary>
     /// A class to manage the sharing of cameras between different streams.
     /// </summary>
-    internal class CameraManager //: MarshalByRefObject
+    internal class CameraManager
     {
-        private CameraManager()
-        {
-        }
-
-        private static readonly Lazy<CameraManager> SingletonInstance = new Lazy<CameraManager>(
-            () => new CameraManager());
-
+        private static readonly Lazy<CameraManager> SingletonInstance = new Lazy<CameraManager>(() => new CameraManager());
         public static CameraManager Instance => SingletonInstance.Value;
 
         private readonly ConcurrentDictionary<string, Lazy<Camera>> _cameraStore = new ConcurrentDictionary<string, Lazy<Camera>>();
+
+        private CameraManager()
+        {
+        }
 
         public Camera GetCamera(string name)
         {

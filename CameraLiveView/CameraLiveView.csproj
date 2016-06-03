@@ -145,6 +145,7 @@
     <Compile Include="App_Start\RouteConfig.cs" />
     <Compile Include="App_Start\WebApiConfig.cs" />
     <Compile Include="Controllers\VideoController.cs" />
+    <Compile Include="Models\ByteArrayExtensions.cs" />
     <Compile Include="Models\Camera.cs" />
     <Compile Include="Models\CameraManager.cs" />
     <Compile Include="Controllers\HomeController.cs" />
