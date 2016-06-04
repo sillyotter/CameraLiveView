@@ -41,10 +41,11 @@ namespace CameraLiveView.Models
 
             // http://www.insecam.org/en/bycountry/US/
 
+            var url = 
             Frames = CreateMjpegFrameGrabber(
                 name == "c1"
                     ? "http://50.199.22.21:84/mjpg/video.mjpg?COUNTER"
-                    : "http://216.227.246.9:8083/mjpg/video.mjpg?COUNTER");
+                    : "http://50.199.22.21:83/mjpg/video.mjpg?COUNTER");
         }
 
         public IObservable<Tuple<byte[], int>> Frames { get; }
