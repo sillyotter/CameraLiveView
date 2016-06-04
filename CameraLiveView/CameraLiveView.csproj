@@ -160,10 +160,12 @@
     <Compile Include="Controllers\CameraController.cs" />
     <Compile Include="Models\FFMpegWrapper.cs" />
     <Compile Include="Models\GlobalBufferManager.cs" />
+    <Compile Include="Models\IBufferProvider.cs" />
     <Compile Include="Models\JpegImageStream.cs" />
     <Compile Include="Global.asax.cs">
       <DependentUpon>Global.asax</DependentUpon>
     </Compile>
+    <Compile Include="Models\JpegStreamReader.cs" />
     <Compile Include="Models\MP4VideoStream.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>

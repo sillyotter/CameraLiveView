@@ -3,7 +3,7 @@ using System.ServiceModel.Channels;
 
 namespace CameraLiveView.Models
 {
-    public class GlobalBufferManager
+    public class GlobalBufferManager : IBufferProvider
     {
         private const int TotalBufferMemory = 100*1024*1024;
         private const int MaxBufferSize = 128*1024;

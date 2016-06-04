@@ -19,9 +19,6 @@ namespace CameraLiveView.Models
 
         public string Name { get; }
 
-        private static readonly byte[] JpegHeader = {0xFF, 0xD8, 0xFF};
-        private static readonly byte[] JpegFooter = {0xFF, 0xD9};
-        private const int DefaultBufferSize = 32*1024; // This might need to be bigger, or perhaps smaller. depending on use
         private const double DefaultFrameLifespanSeconds = 2.0;
 
         private static readonly Subject<byte[]> BytesToBeReturnedToBuffer = new Subject<byte[]>();
@@ -65,73 +62,21 @@ namespace CameraLiveView.Models
                                       using (var client = new HttpClient())
                                       using (var req = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, tok).ConfigureAwait(false))
                                       using (var s = await req.Content.ReadAsStreamAsync().ConfigureAwait(false))
+                                      using (var jr = new JpegStreamReader(s, GlobalBufferManager.Instance))
                                       {
-                                          var buffer = GlobalBufferManager.Instance.TakeBuffer(DefaultBufferSize);
-                                          var tempBuf = GlobalBufferManager.Instance.TakeBuffer(DefaultBufferSize);
-                                          var postEndIndex = 0;
-                                          var readCount = 1;
-                                          var headerIndex = -1;
-                                          var frameLength = 2;
-                                          try
+                                          var framedata = await jr.ReadJpegBytesAsync(tok);
+
+                                          while (!tok.IsCancellationRequested && framedata != null)
                                           {
-                                              while (!tok.IsCancellationRequested && readCount > 0)
-                                              {
-                                                  readCount = await s.ReadAsync(tempBuf, 0, tempBuf.Length, tok).ConfigureAwait(false);
-                                                  if (readCount > 0)
-                                                  {
-                                                      if (buffer.Length - postEndIndex < readCount)
-                                                      {
-                                                          var nb = GlobalBufferManager.Instance.TakeBuffer(buffer.Length*2);
-                                                          Buffer.BlockCopy(buffer, 0, nb, 0, buffer.Length);
-                                                          var temp = buffer;
-                                                          buffer = nb;
-                                                          GlobalBufferManager.Instance.ReturnBuffer(temp);
-                                                      }
+                                              var frame = framedata.Item1;
 
-                                                      Buffer.BlockCopy(tempBuf, 0, buffer, postEndIndex, readCount);
-                                                      postEndIndex += readCount;
+                                              obs.OnNext(framedata);
+                                              BytesToBeReturnedToBuffer.OnNext(frame);
 
-                                                      if (headerIndex == -1)
-                                                      {
-                                                          headerIndex = buffer.Find(postEndIndex, JpegHeader, 0);
-                                                      }
-
-                                                      // im making the assumption that frames dont vary in size by that much, so rather than 
-                                                      // search from headerindex on, skip forward a bit.  here, i skip forward 3/4 the previous framelength, 
-                                                      // which shouldnt miss the end of the next frame, but which should reduce the amount
-                                                      // of searching we do.
-                                                      var footerIndex = buffer.Find(postEndIndex, JpegFooter, headerIndex + (int)(frameLength*.75));
-
-                                                      if (headerIndex != -1 && footerIndex != -1)
-                                                      {
-                                                          var postFooterIndex = footerIndex + 2;
-                                                          frameLength = postFooterIndex - headerIndex;
-
-                                                          var frame = GlobalBufferManager.Instance.TakeBuffer(frameLength);
-                                                          // instead of just allocating a big buffer for each frame, which may 
-                                                          // in time resulting in fragmenting the LOH, we will use this buffer manager
-                                                          // which keeps a pool of reusable buffers around for ever, allowing us to ignore
-                                                          // fragmentation and loh GC pauses.
-
-                                                          Buffer.BlockCopy(buffer, headerIndex, frame, 0, frameLength);
-
-                                                          obs.OnNext(Tuple.Create(frame, frameLength));
-                                                          BytesToBeReturnedToBuffer.OnNext(frame);
-
-                                                          var tailLength = postEndIndex - postFooterIndex;
-                                                          Buffer.BlockCopy(buffer, postFooterIndex, buffer, 0, tailLength);
-                                                          postEndIndex = tailLength;
-                                                          headerIndex = -1;
-                                                      }
-                                                  }
-                                              }
-                                          }
-                                          finally
-                                          {
-                                              GlobalBufferManager.Instance.ReturnBuffer(buffer);
-                                              GlobalBufferManager.Instance.ReturnBuffer(tempBuf);
+                                              framedata = await jr.ReadJpegBytesAsync(tok);
                                           }
                                       }
+
                                       obs.OnCompleted();
                                   }
                                   catch (Exception e)
