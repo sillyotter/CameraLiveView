@@ -4,11 +4,13 @@ using System.IO;
 using System.Reactive.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using NLog;
 
 namespace CameraLiveView.Models
 {
     public class FFMpegWrapper : IDisposable
     {
+        private static readonly Logger Log = LogManager.GetCurrentClassLogger();
         private CancellationTokenSource _cts = new CancellationTokenSource();
 
         private Process _p;
@@ -19,20 +21,31 @@ namespace CameraLiveView.Models
 
         private static readonly string FFMpegDirectory = AppDomain.CurrentDomain.BaseDirectory + "bin";
         private static readonly string FFMpegExeLocation = Path.Combine(FFMpegDirectory, "ffmpeg.exe");
-        private static readonly ProcessStartInfo StartInfo = new ProcessStartInfo(FFMpegExeLocation, $"{InputOptions} -i \"-\" {OutputOptions} \"-\"")
-        {
-            CreateNoWindow = true,
-            ErrorDialog = false,
-            UseShellExecute = false,
-            RedirectStandardError = false,
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            WorkingDirectory = FFMpegDirectory
-        };
+
+#if DEBUG
+        private const string LogOption = "-loglevel info";
+#else
+        private const string LogOption = "-loglevel fatal";
+#endif
+
 
         public FFMpegWrapper(IObservable<Tuple<byte[], int>> frames)
         {
-            _p = Process.Start(StartInfo);
+            var startInfo = new ProcessStartInfo(FFMpegExeLocation, $"{LogOption} {InputOptions} -i \"-\" {OutputOptions} \"-\"")
+            {
+                CreateNoWindow = true,
+                ErrorDialog = false,
+                UseShellExecute = false,
+                RedirectStandardError = true,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                WorkingDirectory = FFMpegDirectory
+            };
+
+            _p = Process.Start(startInfo);
+            if (_p == null) throw new InvalidOperationException();
+
+            _p.BeginErrorReadLine();
 
             _task = Task.Run(
                 async () =>
@@ -49,12 +62,18 @@ namespace CameraLiveView.Models
                           }
                           catch(Exception ex)
                           {
-                              Console.WriteLine(ex);
+                              Log.Error(ex);
                           }
                       },
                 _cts.Token);
         }
-        
+
+        public event DataReceivedEventHandler ErrorDataReceived
+        {
+            add { _p.ErrorDataReceived += value; }
+            remove { _p.ErrorDataReceived -= value; }
+        }
+
         public Task<int> Read(byte[] data, int offset, int count) 
             => _p.StandardOutput.BaseStream.ReadAsync(data, offset, count);
 
@@ -64,6 +83,7 @@ namespace CameraLiveView.Models
             {
                 if (!_p.HasExited)
                 {
+                    _p.CancelErrorRead();
                     _p.Kill();
                     _p.WaitForExit();
                 }

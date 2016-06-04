@@ -3,11 +3,14 @@ using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Threading.Tasks;
+using NLog;
 
 namespace CameraLiveView.Models
 {
     internal class Mp4VideoStream
     {
+        private static readonly Logger Log = LogManager.GetCurrentClassLogger();
+
         private const int DefaultBufferSize = 32*1024;
         private readonly Camera _c;
 
@@ -24,6 +27,7 @@ namespace CameraLiveView.Models
                       {
                           using (var ffmpeg = new FFMpegWrapper(_c.Frames))
                           {
+                              ffmpeg.ErrorDataReceived += (sender, args) => Log.Debug(args.Data);
                               var data = GlobalBufferManager.Instance.TakeBuffer(DefaultBufferSize);
                               try
                               {
@@ -35,7 +39,7 @@ namespace CameraLiveView.Models
                               }
                               catch (Exception e)
                               {
-                                  Console.WriteLine(e);
+                                  Log.Error(e);
                               }
                               finally
                               {

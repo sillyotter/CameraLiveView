@@ -4,6 +4,7 @@ using System.Reactive.Concurrency;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Threading.Tasks;
+using NLog;
 
 namespace CameraLiveView.Models
 {
@@ -14,6 +15,8 @@ namespace CameraLiveView.Models
     /// </summary>
     public class Camera
     {
+        private static readonly Logger Log = LogManager.GetCurrentClassLogger();
+
         public string Name { get; }
 
         private static readonly byte[] JpegHeader = {0xFF, 0xD8, 0xFF};
@@ -133,11 +136,11 @@ namespace CameraLiveView.Models
                                   }
                                   catch (Exception e)
                                   {
-                                      Console.WriteLine(e.ToString());
+                                      Log.Error(e);
                                       obs.OnError(e);
                                   }
 
-                                  Console.WriteLine("Done fetching images from camera");
+                                  Log.Debug("Done fetching images from camera");
 
                                   // At some point, we will hav a network failure, and stop sending frames to the engine in here
                                   // and the outbound push contexts will stop getting data to send.  If this give sup on really long timeouts

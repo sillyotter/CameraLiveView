@@ -6,11 +6,14 @@ using System.Reactive.Concurrency;
 using System.Reactive.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using NLog;
 
 namespace CameraLiveView.Models
 {
     internal class JpegImageStream
     {
+        private static readonly Logger Log = LogManager.GetCurrentClassLogger();
+
         public const string Boundary = "CMLV";
         private static readonly byte[] NewLine = Encoding.ASCII.GetBytes("\r\n");
 
@@ -49,7 +52,7 @@ namespace CameraLiveView.Models
             }
             finally
             {
-                Console.WriteLine("done sending frames to http client");
+               Log.Debug("done sending frames to http client");
             }
         }
     }
