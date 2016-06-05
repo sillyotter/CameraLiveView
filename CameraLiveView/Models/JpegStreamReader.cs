@@ -32,7 +32,7 @@ namespace CameraLiveView.Models
         {
             _readCount = await _s.ReadAsync(_tempBuf, 0, _tempBuf.Length, tok).ConfigureAwait(false);
 
-            while (!tok.IsCancellationRequested && _readCount > 0)
+            do
             {
                 if (_buffer.Length - _postEndIndex < _readCount)
                 {
@@ -79,7 +79,9 @@ namespace CameraLiveView.Models
                 }
 
                 _readCount = await _s.ReadAsync(_tempBuf, 0, _tempBuf.Length, tok).ConfigureAwait(false);
-            }
+
+            } while (!tok.IsCancellationRequested && _readCount > 0);
+
             return null;
         }
 
