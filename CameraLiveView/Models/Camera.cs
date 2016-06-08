@@ -50,6 +50,9 @@ namespace CameraLiveView.Models
 
         public IObservable<Tuple<byte[], int>> Frames { get; }
 
+        private static readonly byte[] JpegHeader = { 0xFF, 0xD8, 0xFF };
+        private static readonly byte[] JpegFooter = { 0xFF, 0xD9 };
+
         private static IObservable<Tuple<byte[], int>> CreateMjpegFrameGrabber(string url)
         {
             return Observable.Create<Tuple<byte[], int>>(
@@ -60,10 +63,14 @@ namespace CameraLiveView.Models
                               {
                                   try
                                   {
+                                      /*
+                                       *  
+      
+                                      */
                                       using (var client = new HttpClient())
                                       using (var req = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, tok).ConfigureAwait(false))
                                       using (var s = await req.Content.ReadAsStreamAsync().ConfigureAwait(false))
-                                      using (var jr = new JpegStreamReader(s, GlobalBufferManager.Instance))
+                                      using (var jr = new DelimitedStreamReader(s, GlobalBufferManager.Instance, JpegHeader, JpegFooter))
                                       {
                                           var framedata = await jr.ReadJpegBytesAsync(tok);
 

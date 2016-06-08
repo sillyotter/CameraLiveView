@@ -5,12 +5,12 @@ using System.Threading.Tasks;
 
 namespace CameraLiveView.Models
 {
-    public class JpegStreamReader : IDisposable
+    public class DelimitedStreamReader : IDisposable
     {
         private readonly Stream _s;
         private readonly IBufferProvider _prov;
-        private static readonly byte[] JpegHeader = {0xFF, 0xD8, 0xFF};
-        private static readonly byte[] JpegFooter = {0xFF, 0xD9};
+        private readonly byte[] _header;
+        private readonly byte[] _footer;
         private const int DefaultBufferSize = 32*1024; // This might need to be bigger, or perhaps smaller. depending on use
 
         private byte[] _buffer;
@@ -20,10 +20,12 @@ namespace CameraLiveView.Models
         private int _headerIndex = -1;
         private int _frameLength = 2;
 
-        public JpegStreamReader(Stream s, IBufferProvider prov)
+        public DelimitedStreamReader(Stream s, IBufferProvider prov, byte[] header, byte[] footer)
         {
             _s = s;
             _prov = prov;
+            _header = header;
+            _footer = footer;
             _buffer = _prov.TakeBuffer(DefaultBufferSize);
             _tempBuf = _prov.TakeBuffer(DefaultBufferSize);
         }
@@ -48,18 +50,18 @@ namespace CameraLiveView.Models
 
                 if (_headerIndex == -1)
                 {
-                    _headerIndex = _buffer.Find(_postEndIndex, JpegHeader, 0);
+                    _headerIndex = _buffer.Find(_postEndIndex, _header, 0);
                 }
 
                 // im making the assumption that frames dont vary in size by that much, so rather than 
                 // search from headerindex on, skip forward a bit.  here, i skip forward 3/4 the previous framelength, 
                 // which shouldnt miss the end of the next frame, but which should reduce the amount
                 // of searching we do.
-                var footerIndex = _buffer.Find(_postEndIndex, JpegFooter, _headerIndex + (int) (_frameLength*.75));
+                var footerIndex = _buffer.Find(_postEndIndex, _footer, _headerIndex + (int) (_frameLength*.75));
 
                 if (_headerIndex != -1 && footerIndex != -1)
                 {
-                    var postFooterIndex = footerIndex + 2;
+                    var postFooterIndex = footerIndex + _footer.Length;
                     _frameLength = postFooterIndex - _headerIndex;
 
                     var frame = _prov.TakeBuffer(_frameLength);

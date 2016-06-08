@@ -8,6 +8,9 @@ namespace UnitTests
 {
     public class JpegParserTests
     {
+        private static readonly byte[] JpegHeader = { 0xFF, 0xD8, 0xFF };
+        private static readonly byte[] JpegFooter = { 0xFF, 0xD9 };
+
         private class MemoryProvider : IBufferProvider
         {
             public byte[] TakeBuffer(int size)
@@ -24,16 +27,13 @@ namespace UnitTests
         public async void ReturnsNullWhenNoJpegFound()
         {
             using (var ms = new MemoryStream(Enumerable.Range(0, 1000).Select(x => (byte) x).ToArray()))
-            using (var jr = new JpegStreamReader(ms, new MemoryProvider()))
+            using (var jr = new DelimitedStreamReader(ms, new MemoryProvider(), JpegHeader, JpegFooter))
             {
                 var j = await jr.ReadJpegBytesAsync(CancellationToken.None);
                 Assert.Equal(null, j);
             }
         }
-
-        private static readonly byte[] JpegHeader = {0xFF, 0xD8, 0xFF};
-        private static readonly byte[] JpegFooter = {0xFF, 0xD9};
-
+        
         [Fact]
         public async void CanFindOneJpeg()
         {
@@ -46,7 +46,7 @@ namespace UnitTests
                     .ToArray();
 
             using (var ms = new MemoryStream(bufWithJpegInIt))
-            using (var jr = new JpegStreamReader(ms, new MemoryProvider()))
+            using (var jr = new DelimitedStreamReader(ms, new MemoryProvider(), JpegHeader, JpegFooter))
             {
                 var j = await jr.ReadJpegBytesAsync(CancellationToken.None);
                 Assert.NotEqual(null, j);
@@ -72,7 +72,7 @@ namespace UnitTests
                     .ToArray();
 
             using (var ms = new MemoryStream(bufWith2JpegInIt))
-            using (var jr = new JpegStreamReader(ms, new MemoryProvider()))
+            using (var jr = new DelimitedStreamReader(ms, new MemoryProvider(), JpegHeader, JpegFooter))
             {
                 var j = await jr.ReadJpegBytesAsync(CancellationToken.None);
                 Assert.NotEqual(null, j);
@@ -110,7 +110,7 @@ namespace UnitTests
                     .ToArray();
 
             using (var ms = new MemoryStream(bufWith2JpegInIt))
-            using (var jr = new JpegStreamReader(ms, new MemoryProvider()))
+            using (var jr = new DelimitedStreamReader(ms, new MemoryProvider(), JpegHeader, JpegFooter))
             {
                 var j = await jr.ReadJpegBytesAsync(CancellationToken.None);
                 Assert.NotEqual(null, j);
